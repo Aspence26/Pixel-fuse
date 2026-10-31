@@ -348,21 +348,57 @@ function scoreHole(p){
   spawnHole();
 }
 function sim(p,d,goal,max){let r={x:p.x,y:p.y,w:p.w,h:p.h};for(let i=1;i<=max;i++){r=wrapStep(r,d);if(goal(r))return i}return Infinity}
+// The player strictly ahead of everyone (and of this CPU). CPUs won't help them merge.
+function leaderOf(p){
+  const max=Math.max(...S.players.map(q=>q.score));
+  const top=S.players.filter(q=>q.score===max);
+  return top.length===1&&top[0]!==p&&top[0].score>p.score?top[0]:null;
+}
+// ms until the leader would bump into p, if p goes `myDir` (null = stop) and the leader keeps its heading
+function threat(p,L,myDir){
+  if(!L||L.size!==p.size||p.size>=4)return Infinity;
+  const sp=SPEEDS[cfg.speed]||6,ra=myDir?count(p,myDir)*sp:0,rb=L.dir?count(L,L.dir)*sp:0;
+  let a={x:p.x,y:p.y,w:p.w,h:p.h},b={x:L.x,y:L.y,w:L.w,h:L.h},accA=0,accB=0;
+  if(overlap(a,b))return 0;
+  for(let t=25;t<=2000;t+=25){
+    accA+=ra*.025;accB+=rb*.025;
+    while(accA>=1){accA--;a=wrapStep(a,myDir);if(overlap(a,b))return t}
+    while(accB>=1){accB--;b=wrapStep(b,L.dir);if(overlap(a,b))return t}
+  }
+  return Infinity;
+}
+function safest(p,L,prefer){ // pick the move (or stop) that keeps away from the leader longest
+  const opts=[prefer,...new Set(p.abilities),null].filter((v,i,a)=>a.indexOf(v)===i);
+  let best=prefer,bt=-1;
+  for(const o of opts){const t=threat(p,L,o);if(t>bt){bt=t;best=o}if(t===Infinity)break}
+  return best;
+}
+const DODGE={easy:.35,normal:.15,hard:0}; // chance a CPU fails to react
 function botThink(p){
-  const b=BOT[cfg.bot],opts=[...new Set(p.abilities)];
+  const b=BOT[cfg.bot],opts=[...new Set(p.abilities)],L=leaderOf(p);
   if(Math.random()<b.miss){p.dir=Math.random()<.3?null:pick(opts);return}
   const goals=[];
   if(p.size===4){if(S.hole)goals.push({g:r=>r.x===S.hole.x&&r.y===S.hole.y})}
-  else for(const q of S.players)if(q!==p&&q.size===p.size)goals.push({g:r=>overlap(r,q),q});
-  if(!goals.length){p.dir=null;return}
-  let best=null,bt=Infinity,bq=null;const max=S.W*S.H;
-  for(const d of opts)for(const G of goals){
-    const n=sim(p,d,G.g,max);if(n===Infinity)continue;
-    const t=n/count(p,d);if(t<bt){bt=t;best=d;bq=G.q}
+  else for(const q of S.players)if(q!==p&&q!==L&&q.size===p.size)goals.push({g:r=>overlap(r,q),q});
+  let best=null;
+  if(goals.length){
+    let bt=Infinity,bq=null;const max=S.W*S.H;
+    for(const d of opts)for(const G of goals){
+      const n=sim(p,d,G.g,max);if(n===Infinity)continue;
+      const t=n/count(p,d);if(t<bt){bt=t;best=d;bq=G.q}
+    }
+    // chasing someone moving the same way gets nowhere — sometimes wait for them instead
+    if(bq&&bq.dir&&(bq.dir===best||bt>S.W*.7)&&Math.random()<.5)best=null;
   }
-  // chasing someone moving the same way gets nowhere — sometimes wait for them instead
-  if(bq&&bq.dir&&(bq.dir===best||bt>S.W*.7)&&Math.random()<.5){p.dir=null;return}
+  // never walk into the leader
+  if(L&&threat(p,L,best)<1500)best=safest(p,L,best);
   p.dir=best;
+}
+function botDodge(p){ // quick check between decisions: is the leader about to hit me?
+  const L=leaderOf(p);if(!L||L.size!==p.size||p.size>=4)return;
+  if(threat(p,L,p.dir)>=1200||Math.random()<(DODGE[cfg.bot]??.15))return;
+  const d=safest(p,L,p.dir);
+  if(d!==p.dir){p.dir=d;p.think=Math.max(p.think,450)}
 }
 function update(dt){
   if(!S||S.paused||S.over)return;
@@ -375,7 +411,7 @@ function update(dt){
   const sp=SPEEDS[cfg.speed]||6;
   for(const p of S.players){
     if(p.spawnT>0)p.spawnT-=dt;
-    if(!p.human){p.think-=dt;if(p.think<=0){botThink(p);p.think=BOT[cfg.bot].think*(.7+Math.random()*.6)}}
+    if(!p.human){p.think-=dt;p.dodgeT=(p.dodgeT||0)-dt;if(p.think<=0){botThink(p);p.think=BOT[cfg.bot].think*(.7+Math.random()*.6)}else if(p.dodgeT<=0){botDodge(p);p.dodgeT=140}}
   }
   for(const p of S.players){
     if(S.over)break;
