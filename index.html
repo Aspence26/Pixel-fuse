@@ -8,6 +8,12 @@
 <meta property="og:title" content="Pixel Fuse">
 <meta property="og:description" content="Join my game! Merge pixels, build a square, fill the hole.">
 <meta name="theme-color" content="#090b16">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Pixel Fuse">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='8' height='8' fill='%23ff5470'/%3E%3Crect x='8' width='8' height='8' fill='%23ffd23f'/%3E%3Crect y='8' width='8' height='8' fill='%233fa7ff'/%3E%3Crect x='8' y='8' width='8' height='8' fill='%234ade80'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
@@ -904,6 +910,8 @@ const room=(PARAMS.get('room')||'').toUpperCase().replace(/[^A-Z]/g,'').slice(0,
 if(room){$('#codeIn').value=room;$('#joinBtn').textContent='JOIN';joinMsg(`You've been invited to room ${room}. Enter your name and tap JOIN.`)}
 requestAnimationFrame(loop);
 })();
+// Save the game on the phone so it opens and plays offline (same-screen / vs CPU).
+if('serviceWorker' in navigator&&location.protocol!=='file:')addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 </script>
 </body>
 </html>
